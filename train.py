@@ -11,23 +11,30 @@ from data import get_dataset
 from model import VAE, masked_mse
 
 batch_size = 48
-in_memory = True
-alpha = 10
+alpha = 10  # TODO: why?
 residual = False
+in_memory = True
+return_2d = True
 
-train_dataset, test_dataset, mask = get_dataset(in_memory=in_memory)
+train_dataset, test_dataset, mask = get_dataset(in_memory=in_memory,
+                                                return_2d=return_2d)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size,
                           shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=batch_size,
                          shuffle=False)
-model = VAE()
+model = VAE(input_2d=return_2d)
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device_name = '%s:%i' % (device.type, device.index)
 model = model.to(device)
 mask = mask.to(device)
 
-summary(model, (1, 91, 109, 91))
+# TODO: switching from cuda:0 to cuda:1 returns error from summary
+if return_2d:
+    summary(model, (1, 91, 109))
+else:
+    summary(model, (1, 91, 109, 91))
 
 loss_function = functools.partial(masked_mse, mask=mask)
 
@@ -48,6 +55,7 @@ if residual:
     mean /= length
 mean = mean.to(device)
 
+# TODO: Fix printing recon. loss instead of ELBO
 for epoch in range(n_epochs):
     epoch_batch = 0
     verbose_loss = 0
@@ -56,7 +64,7 @@ for epoch in range(n_epochs):
     for this_data in train_loader:
         model.train()
         model.zero_grad()
-        this_data[this_data >= 1] = 1
+        this_data[this_data >= 1] = 1  # TODO:?
         this_data = this_data.to(device)
         this_data -= mean[None, ...]
         rec, penalty = model(this_data)
@@ -88,18 +96,25 @@ for epoch in range(n_epochs):
             val_penalty /= val_batch
             verbose_loss /= verbose_batch
             verbose_penalty /= verbose_batch
-            print('Epoch %i, batch %i/%i,'
-                  'train_objective: %4e,'
-                  'train_penalty: %4e,'
-                  'val_objective: %4e,'
-                  'val_penalty: %4e' % (epoch, epoch_batch, n_batch,
-                                        verbose_loss, verbose_penalty,
-                                        val_loss, val_penalty))
+            print('Epoch %03i | batch %i/%i | '
+                  'train_ELBO: %4e | ' 
+                  'val_ELBO:%4e | '
+                  #'train_obj: %4e,'
+                  #'train_pen: %4e,'
+                  #'val_obj: %4e,'
+                  #'val_pen: %4e'
+                  % (epoch, epoch_batch, n_batch,
+                     verbose_loss + verbose_penalty,
+                     val_loss + val_penalty))
             verbose_batch = 0
             train_loss = 0
             penalty = 0
     state_dict = model.state_dict()
 
-    name = 'vae_dilated_e_%i_loss_%.4e.pkl' % (epoch, verbose_loss)
+    if return_2d:
+        name = '2D_vae_dilated_e_%03i_loss_%.4e.pkl' % (epoch, elbo)
+    else:
+        name = 'vae_dilated_e_%03i_loss_%.4e.pkl' % (epoch, elbo)
+
     torch.save((state_dict, mean),
-               expanduser('~/output/deep-fmri/%s' % name))
+               expanduser('~/output/deep-fmri/%s' % name))  # why saving mean?

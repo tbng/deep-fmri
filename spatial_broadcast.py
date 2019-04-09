@@ -11,8 +11,8 @@ class SpatialBroadcastLayer2D(nn.Module):
         self.input_dim = input_dim
         self.h_dim = h_dim
         self.w_dim = w_dim
-        h_grid, w_grid = torch.meshgrid(torch.linspace(-1, 1, h),
-                                        torch.linspace(-1, 1, w))
+        h_grid, w_grid = torch.meshgrid(torch.linspace(-1, 1, h_dim),
+                                        torch.linspace(-1, 1, w_dim))
         self.register_buffer("h_grid", h_grid.view((1, 1) + h_grid.shape))
         self.register_buffer("w_grid", w_grid.view((1, 1) + w_grid.shape))
 

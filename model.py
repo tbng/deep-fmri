@@ -208,19 +208,22 @@ class Decoder2d(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self, embedding_dim=128, reparam=True):
+    def __init__(self, embedding_dim=128, input_2d=True):
         super().__init__()
-        self.reparam = reparam
-        self.encoder = Encoder(embedding_dim)
-        self.decoder = Decoder(embedding_dim)
+        if input_2d:
+            self.encoder = Encoder2d(embedding_dim)
+            self.decoder = Decoder2d(embedding_dim)
+        else:
+            self.encoder = Encoder(embedding_dim)
+            self.decoder = Decoder(embedding_dim)
 
     def forward(self, img):
         mean, log_var = self.encoder(img)
         penalty = gaussian_kl(mean, log_var)
-        if self.training and self.reparam:
+        if self.training:
             latent = reparameterize(mean, log_var)
         else:
-            latent = mean
+            latent = mean  # why not doing this in the eval mode?
         return self.decoder(latent), penalty
 
 

@@ -203,13 +203,14 @@ class Decoder2d(nn.Module):
         rec = self.deconv(avg_channel)
 
         # self.pad = nn.ConstantPad3d((2, 3, 9, 10, 2, 3), 0)
-        rec = rec[:, :, 2:-3, 9:-10]  # why?
+        rec = rec[:, :, 2:-3, 9:-10]
         return rec
 
 
 class VAE(nn.Module):
-    def __init__(self, embedding_dim=128, input_2d=True):
+    def __init__(self, embedding_dim=128, input_2d=True, reparam=True):
         super().__init__()
+        self.reparam = reparam
         if input_2d:
             self.encoder = Encoder2d(embedding_dim)
             self.decoder = Decoder2d(embedding_dim)
@@ -220,10 +221,10 @@ class VAE(nn.Module):
     def forward(self, img):
         mean, log_var = self.encoder(img)
         penalty = gaussian_kl(mean, log_var)
-        if self.training:
+        if self.training and self.reparam:
             latent = reparameterize(mean, log_var)
         else:
-            latent = mean  # why not doing this in the eval mode?
+            latent = mean
         return self.decoder(latent), penalty
 
 

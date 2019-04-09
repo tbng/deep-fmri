@@ -107,17 +107,17 @@ class Decoder(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self, embedding_dim=128):
+    def __init__(self, embedding_dim=128, reparam=True):
         super().__init__()
+        self.reparam = reparam
         self.encoder = Encoder(embedding_dim)
         self.decoder = Decoder(embedding_dim)
 
     def forward(self, img):
         mean, log_var = self.encoder(img)
         penalty = gaussian_kl(mean, log_var)
-        if self.training:
-            eps = randn_like(mean)
-            latent = mean + torch.exp(log_var / 2) * eps
+        if self.training and self.reparam:
+            latent = reparameterize(mean, log_var)
         else:
             latent = mean
         return self.decoder(latent), penalty
@@ -134,3 +134,8 @@ def masked_mse(pred, target, mask):
     mask = mask[None, None, ...]
     diff.masked_fill_(mask, 0.)
     return torch.sum(diff ** 2) / diff.shape[0]
+
+
+def reparameterize(mean, log_var):
+    eps = randn_like(mean)
+    return mean + torch.exp(log_var / 2) * eps

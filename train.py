@@ -1,23 +1,31 @@
 import functools
 import math
 import torch
+import os
+os.environ['CUDA_VISIBLE_DEVICES']='1'
 
 from os.path import expanduser
 from torch.optim import Adam, lr_scheduler
 from torch.utils.data import DataLoader
 from torchsummary import summary
 
-from data import get_dataset
-from model import VAE, masked_mse
+from data import get_dataset, NumpyDataset2d, load_cut_data
+from model import VAE, masked_mse, reparameterize, gaussian_kl
 
 batch_size = 48
 beta = 1  # related to \beta-VAE?
 residual = False
 in_memory = True
 return_2d = True
+voxel_standardize = True
 
-train_dataset, test_dataset, mask = get_dataset(in_memory=in_memory,
-                                                return_2d=return_2d)
+if return_2d:
+    train, test, mask = load_cut_data(voxel_standardize=voxel_standardize)
+    train_dataset = NumpyDataset2d(train)
+    test_dataset = NumpyDataset2d(test)
+else:
+    train_dataset, test_dataset, mask = get_dataset(in_memory=in_memory,
+                                                    return_2d=return_2d)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size,
                           shuffle=True)
@@ -60,6 +68,11 @@ mean = mean.to(device)
 # for plotting ELBO train & val loss
 list_train_elbo = []
 list_val_elbo = []
+latents = []
+latents_reparam = []
+list_rec = []
+
+reparam = False
 
 for epoch in range(n_epochs):
     epoch_batch = 0
@@ -68,13 +81,23 @@ for epoch in range(n_epochs):
     verbose_batch = 0
     epoch_train_elbo = 0
     epoch_val_elbo = 0
+
     for this_data in train_loader:
         model.train()
         model.zero_grad()
         this_data[this_data >= 1] = 1
         this_data = this_data.to(device)
         this_data -= mean[None, ...]
-        rec, penalty = model(this_data)
+        mu, log_var = model.encoder(this_data)
+        penalty = gaussian_kl(mu, log_var)
+        if reparam:
+            latent = reparameterize(mu, log_var)
+            latents.append(latent)
+        else:
+            latent = mu
+            latents_reparam.append(latent)
+        rec = model.decoder(latent)
+
         penalty *= beta
         loss = loss_function(rec, this_data)
         elbo = loss + penalty
@@ -126,6 +149,29 @@ for epoch in range(n_epochs):
         name = '2D_vae_dilated_e_%03i_loss_%.4e.pkl' % (epoch, elbo)
     else:
         name = 'vae_dilated_e_%03i_loss_%.4e.pkl' % (epoch, elbo)
+
+    # Reconstruct the image after training
+    recs = []
+    with torch.no_grad():
+        model.eval()
+        for test_data in test_loader:
+            test_data = test_data.to(device)
+            test_data -= mean[None, ...]
+            rec, penalty = model(test_data)
+            mu, log_var = model.encoder(test_data)
+            if reparam:
+                latent = reparameterize(mu, log_var)
+            else:
+                latent = mu
+            rec = model.decoder(latent)
+            recs.append(rec)
+
+    rec = torch.cat(recs, dim=0)
+    # mean = mean.to('cpu')
+    rec += mean[None, ...]
+    rec = rec.masked_fill_(mask[None, None, ...] ^ 1, 0.)
+    rec = rec.cpu().numpy()
+    list_rec.append(rec)
 
     torch.save((state_dict, mean),
                expanduser('./output/%s' % name))

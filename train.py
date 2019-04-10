@@ -92,7 +92,8 @@ for epoch in range(n_epochs):
     log_vars = []
     with torch.no_grad():
         model.eval()
-        first_batch = True
+        frame_idx = 0
+
         for test_data in test_loader:
             test_data = test_data.to(device)
             # test_data -= mean[None, ...]
@@ -106,25 +107,25 @@ for epoch in range(n_epochs):
                 latent = mu
             rec = model.decoder(latent).cpu().numpy()
             recs.append(rec)
-            if not first_batch:
-                continue
-            fnames = []
-            print("Plotting reconstructions...")
-            test_data = test_data.cpu().numpy()
-            for frame_idx in range(test_data.shape[0]):
-                fig, (ax0, ax1) = plt.subplots(nrows=1, ncols=2,
-                                               figsize=(16, 8))
-                ax0.imshow(test_data[frame_idx, 0, :, :], cmap=plt.cm.RdBu)
-                ax0.set_title("Original data (voxel-wise standardized)")
+            if (epoch + 1) % 10 == 0:
+                fnames = []
+                print("Plotting reconstructions...")
+                test_data = test_data.cpu().numpy()
+                for local_frame_idx in range(test_data.shape[0]):
+                    fig, (ax0, ax1) = plt.subplots(nrows=1, ncols=2,
+                                                   figsize=(16, 8))
+                    ax0.imshow(test_data[local_frame_idx, 0, :, :],
+                               cmap=plt.cm.RdBu)
+                    ax0.set_title("Original data (voxel-wise standardized)")
 
-                ax1.imshow(rec[frame_idx, 0, :, :], cmap=plt.cm.RdBu)
-                ax1.set_title("Reconcstructed")
-                fname = f"reconstructions_{epoch:05d}_{frame_idx:05d}.png"
-                fig.savefig(f"{output_folder / fname}")
-                plt.close(fig)
-                fnames.append(fname)
-            print(f"generated {len(fnames)} png files.")
-            first_batch = False
+                    ax1.imshow(rec[local_frame_idx, 0, :, :], cmap=plt.cm.RdBu)
+                    ax1.set_title("Reconstructed")
+                    fname = f"reconstructions_{epoch:05d}_{frame_idx:05d}.png"
+                    fig.savefig(f"{output_folder / fname}")
+                    plt.close(fig)
+                    fnames.append(fname)
+                    frame_idx += 1
+                print(f"generated {len(fnames)} png files.")
     print(f"Average std of latent mu: {np.vstack(mus).std(axis=0).mean():.4e}")
 
     # rec = torch.cat(recs, dim=0)

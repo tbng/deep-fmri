@@ -28,7 +28,6 @@ embedding_dim = 32
 model = VAE(input_2d=return_2d, embedding_dim=embedding_dim)
 
 device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
-device_name = '%s:%i' % (device.type, device.index)
 model = model.to(device)
 mask = mask.to(device)
 

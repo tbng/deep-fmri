@@ -4,10 +4,10 @@ import torch
 from torch import nn
 
 
-class SpatialBroadcastLayer2D(nn.Module):
+class SpatialBroadcastLayer2d(nn.Module):
 
     def __init__(self, input_dim, h_dim, w_dim):
-        super(SpatialBroadcastLayer2D, self).__init__()
+        super(SpatialBroadcastLayer2d, self).__init__()
         self.input_dim = input_dim
         self.h_dim = h_dim
         self.w_dim = w_dim
@@ -39,7 +39,7 @@ def test_spatial_broadcast():
     z = np.arange(batch_size * z_dim).reshape(batch_size, z_dim)
     z = torch.FloatTensor(z)
 
-    sb = SpatialBroadcastLayer2D(z_dim, 3, 4)
+    sb = SpatialBroadcastLayer2d(z_dim, 3, 4)
     sb_out = sb.forward(z)
 
     assert sb_out.shape == (2, 2 + 5, h, w)

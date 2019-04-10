@@ -2,6 +2,7 @@ import torch
 
 import torch.nn as nn
 import torch.nn.functional as F
+from spatial_broadcast import SpatialBroadcastLayer2d
 from torch.testing import randn_like
 
 
@@ -115,14 +116,14 @@ class Encoder2d(nn.Module):
             nn.Conv2d(1, 16, 3, 2, 1),
             nn.ReLU(),
             nn.Conv2d(16, 16, 3, 1, 1),
-            nn.ReLU(),
             nn.BatchNorm2d(16),
+            nn.ReLU(),
 
             nn.Conv2d(16, 32, 3, 2, 1),
             nn.ReLU(),
             nn.Conv2d(32, 32, 3, 1, 1),
-            nn.ReLU(),
             nn.BatchNorm2d(32),
+            nn.ReLU(),
 
             nn.Conv2d(32, 64, 3, 2, 1),
             nn.ReLU(),
@@ -133,15 +134,14 @@ class Encoder2d(nn.Module):
             nn.Conv2d(64, 128, 3, 2, 1),
             nn.ReLU(),
             nn.Conv2d(128, 128, 3, 1, 1),
-            nn.ReLU(),
             nn.BatchNorm2d(128),
+            nn.ReLU(),
 
             nn.Conv2d(128, 256, 3, 2, 1),
             nn.ReLU(),
             nn.Conv2d(256, 256, 3, 1, 1),
-            nn.ReLU(),
             nn.BatchNorm2d(256),
-
+            nn.ReLU(),
         )
 
         self.dense = nn.Linear(256, embedding_size)
@@ -198,8 +198,8 @@ class Decoder2d(nn.Module):
         batch_size = latent.shape[0]
         avg_channel = self.dense(latent)
         # avg_channel = F.dropout(avg_channel, p=0.1)
-        avg_channel = avg_channel[:, :, None,
-                      None].expand(batch_size, 256, 3, 4) * 1  # why?
+        avg_channel = avg_channel[:, :, None, None].expand(
+            batch_size, 256, 3, 4) * 1  # why?
         rec = self.deconv(avg_channel)
 
         # self.pad = nn.ConstantPad3d((2, 3, 9, 10, 2, 3), 0)
@@ -207,13 +207,43 @@ class Decoder2d(nn.Module):
         return rec
 
 
+class SpatialBroadcastDecoder2d(nn.Module):
+    def __init__(self, embedding_size=128):
+        super().__init__()
+
+        self.spatial_broadcast = SpatialBroadcastLayer2d(
+            embedding_size, 91, 109)
+        self.conv = nn.Sequential(
+            nn.Conv2d(embedding_size + 2, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, 3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, 3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 1, 3, padding=1),
+        )
+
+    def forward(self, latent):
+        return self.conv(self.spatial_broadcast(latent))
+
+
 class VAE(nn.Module):
-    def __init__(self, embedding_dim=128, input_2d=True, reparam=True):
+    def __init__(self, embedding_dim=128, input_2d=True, reparam=True,
+                 use_spatial_broadcast=True):
         super().__init__()
         self.reparam = reparam
         if input_2d:
             self.encoder = Encoder2d(embedding_dim)
-            self.decoder = Decoder2d(embedding_dim)
+            if use_spatial_broadcast:
+                self.decoder = SpatialBroadcastDecoder2d(embedding_dim)
+            else:
+                self.decoder = Decoder2d(embedding_dim)
         else:
             self.encoder = Encoder(embedding_dim)
             self.decoder = Decoder(embedding_dim)

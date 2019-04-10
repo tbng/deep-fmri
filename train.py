@@ -1,6 +1,7 @@
 import functools
 import math
 import torch
+from pathlib import Path
 
 from os.path import expanduser
 from torch.optim import Adam, lr_scheduler
@@ -28,6 +29,11 @@ embedding_dim = 32
 model = VAE(input_2d=return_2d, embedding_dim=embedding_dim)
 
 device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+print(f"Device: {device}")
+output_folder = "output"
+output_folder = Path(output_folder).expanduser().absolute()
+output_folder.mkdir(exist_ok=True)
+print(f"Output folder: {output_folder}")
 model = model.to(device)
 mask = mask.to(device)
 
@@ -127,6 +133,4 @@ for epoch in range(n_epochs):
     else:
         name = 'vae_dilated_e_%03i_loss_%.4e.pkl' % (epoch, elbo)
 
-    torch.save((state_dict, mean),
-               expanduser('./output/%s' % name))
-
+    torch.save((state_dict, mean), str(output_folder / name))

@@ -3,6 +3,7 @@ import math
 import torch
 from pathlib import Path
 import numpy as np
+import matplotlib.pyplot as plt
 
 from torch.optim import Adam, lr_scheduler
 from torch.utils.data import DataLoader
@@ -73,7 +74,7 @@ list_train_elbo = []
 list_val_elbo = []
 latents = []
 latents_reparam = []
-list_rec = []
+# list_rec = []
 
 reparam = False
 
@@ -91,6 +92,7 @@ for epoch in range(n_epochs):
     log_vars = []
     with torch.no_grad():
         model.eval()
+        first_batch = True
         for test_data in test_loader:
             test_data = test_data.to(device)
             # test_data -= mean[None, ...]
@@ -102,17 +104,35 @@ for epoch in range(n_epochs):
                 latent = reparameterize(mu, log_var)
             else:
                 latent = mu
-            rec = model.decoder(latent)
+            rec = model.decoder(latent).cpu().numpy()
             recs.append(rec)
+            if not first_batch:
+                continue
+            fnames = []
+            print("Plotting reconstructions...")
+            for frame_idx in range(test_data.shape[0]):
+                fig, (ax0, ax1) = plt.subplots(nrows=1, ncols=2,
+                                               figsize=(16, 8))
+                ax0.imshow(test_data[frame_idx, 0, :, :], cmap=plt.cm.RdBu)
+                ax0.set_title("Original data (voxel-wise standardized)")
+
+                ax1.imshow(rec[frame_idx, 0, :, :], cmap=plt.cm.RdBu)
+                ax1.set_title("Reconcstructed")
+                fname = f"reconstructions_{epoch:05d}_{frame_idx:05d}.png"
+                fig.savefig(f"{output_folder / fname}")
+                plt.close(fig)
+                fnames.append(fname)
+            print(f"generated {len(fnames)} png files.")
+            first_batch = False
     print(f"Average std of latent mu: {np.vstack(mus).std(axis=0).mean():.4e}")
 
-    rec = torch.cat(recs, dim=0)
-    # rec += mean[None, ...]
-    rec = rec.masked_fill_(mask[None, None, ...] ^ 1, 0.)
-    rec = rec.cpu().numpy()
-    print(f"Average std of reconstructions: {rec.std(axis=0).mean():.4e}")
+    # rec = torch.cat(recs, dim=0)
+    # # rec += mean[None, ...]
+    # rec = rec.masked_fill_(mask[None, None, ...] ^ 1, 0.)
+    # rec = rec.cpu().numpy()
+    # print(f"Average std of reconstructions: {rec.std(axis=0).mean():.4e}")
 
-    list_rec.append(rec)
+    # list_rec.append(rec)
 
     for this_data in train_loader:
         model.train()

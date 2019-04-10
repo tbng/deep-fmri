@@ -110,6 +110,7 @@ for epoch in range(n_epochs):
                 continue
             fnames = []
             print("Plotting reconstructions...")
+            test_data = test_data.cpu().numpy()
             for frame_idx in range(test_data.shape[0]):
                 fig, (ax0, ax1) = plt.subplots(nrows=1, ncols=2,
                                                figsize=(16, 8))

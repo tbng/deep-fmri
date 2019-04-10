@@ -2,13 +2,10 @@ import functools
 import math
 import torch
 from pathlib import Path
-import os
-os.environ['CUDA_VISIBLE_DEVICES']='1'  # set default GPU to 1
+import numpy as np
 
-from os.path import expanduser
 from torch.optim import Adam, lr_scheduler
 from torch.utils.data import DataLoader
-from torchsummary import summary
 
 from data import get_dataset, NumpyDataset2d, load_cut_data
 from model import VAE, masked_mse, reparameterize, gaussian_kl
@@ -156,6 +153,8 @@ for epoch in range(n_epochs):
         name = 'vae_dilated_e_%03i_loss_%.4e.pkl' % (epoch, elbo)
         # Reconstruct the image after training
     recs = []
+    mus = []
+    log_vars = []
     with torch.no_grad():
         model.eval()
         for test_data in test_loader:
@@ -163,12 +162,16 @@ for epoch in range(n_epochs):
             test_data -= mean[None, ...]
             rec, penalty = model(test_data)
             mu, log_var = model.encoder(test_data)
+            mus.append(mu.clone().detach().numpy())
+            log_vars.append(log_var.clone().detach().numpy())
             if reparam:
                 latent = reparameterize(mu, log_var)
             else:
                 latent = mu
             rec = model.decoder(latent)
             recs.append(rec)
+
+    print(f"Average std of latent mu: {np.vstack(mus).std(axis=0).mean()}")
 
     rec = torch.cat(recs, dim=0)
     # mean = mean.to('cpu')

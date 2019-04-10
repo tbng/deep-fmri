@@ -162,8 +162,8 @@ for epoch in range(n_epochs):
             test_data -= mean[None, ...]
             rec, penalty = model(test_data)
             mu, log_var = model.encoder(test_data)
-            mus.append(mu.clone().detach().copy().numpy())
-            log_vars.append(log_var.clone().detach().copy().numpy())
+            mus.append(mu.clone().detach().cpu().numpy())
+            log_vars.append(log_var.clone().detach().cpu().numpy())
             if reparam:
                 latent = reparameterize(mu, log_var)
             else:

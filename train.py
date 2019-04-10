@@ -58,15 +58,15 @@ scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1,
 n_epochs = 40
 total_loss = 0
 n_batch = math.ceil(len(train_dataset) / batch_size)
-mean = torch.zeros_like(train_dataset[0])
-# Compute mean
-if residual:
-    length = 0
-    for this_data in train_loader:
-        length += this_data.shape[0]
-        mean += this_data.sum(dim=0)
-    mean /= length
-mean = mean.to(device)
+# mean = torch.zeros_like(train_dataset[0])
+# # Compute mean
+# if residual:
+#     length = 0
+#     for this_data in train_loader:
+#         length += this_data.shape[0]
+#         mean += this_data.sum(dim=0)
+#     mean /= length
+# mean = mean.to(device)
 
 # for plotting ELBO train & val loss
 list_train_elbo = []
@@ -85,12 +85,41 @@ for epoch in range(n_epochs):
     epoch_train_elbo = 0
     epoch_val_elbo = 0
 
+    # Evaluate and snapshot the model at each epoch (even before training)
+    recs = []
+    mus = []
+    log_vars = []
+    with torch.no_grad():
+        model.eval()
+        for test_data in test_loader:
+            test_data = test_data.to(device)
+            # test_data -= mean[None, ...]
+            rec, penalty = model(test_data)
+            mu, log_var = model.encoder(test_data)
+            mus.append(mu.clone().detach().cpu().numpy())
+            log_vars.append(log_var.clone().detach().cpu().numpy())
+            if reparam:
+                latent = reparameterize(mu, log_var)
+            else:
+                latent = mu
+            rec = model.decoder(latent)
+            recs.append(rec)
+    print(f"Average std of latent mu: {np.vstack(mus).std(axis=0).mean():.4e}")
+
+    rec = torch.cat(recs, dim=0)
+    # rec += mean[None, ...]
+    rec = rec.masked_fill_(mask[None, None, ...] ^ 1, 0.)
+    rec = rec.cpu().numpy()
+    print(f"Average std of reconstructions: {rec.std(axis=0).mean():.4e}")
+
+    list_rec.append(rec)
+
     for this_data in train_loader:
         model.train()
         model.zero_grad()
         this_data[this_data >= 1] = 1
         this_data = this_data.to(device)
-        this_data -= mean[None, ...]
+        # this_data -= mean[None, ...]
         mu, log_var = model.encoder(this_data)
         penalty = gaussian_kl(mu, log_var)
         if reparam:
@@ -118,7 +147,7 @@ for epoch in range(n_epochs):
                 val_penalty = 0
                 for this_test_data in test_loader:
                     this_test_data = this_test_data.to(device)
-                    this_test_data -= mean[None, ...]
+                    # this_test_data -= mean[None, ...]
                     rec, this_val_penalty = model(this_test_data)
                     this_val_penalty *= beta
                     this_val_loss = loss_function(rec, this_test_data)
@@ -133,7 +162,7 @@ for epoch in range(n_epochs):
             val_elbo = val_loss + val_penalty
 
             print('Epoch %03i | batch %i/%i | '
-                  'train_ELBO: %4e | ' 
+                  'train_ELBO: %4e | '
                   'val_ELBO:%4e | '
                   % (epoch, epoch_batch, n_batch, train_elbo, val_elbo))
             verbose_batch = 0
@@ -148,36 +177,12 @@ for epoch in range(n_epochs):
     scheduler.step(epoch_val_elbo)  # update learning rate
 
     if return_2d:
-        name = '2D_vae_dilated_e_%03i_loss_%.4e.pkl' % (epoch, elbo)
+        name = '2D_vae_dilated_e_%03i_loss_%.4e.pkl' % (
+            epoch, epoch_train_elbo)
     else:
-        name = 'vae_dilated_e_%03i_loss_%.4e.pkl' % (epoch, elbo)
+        name = 'vae_dilated_e_%03i_loss_%.4e.pkl' % (
+            epoch, epoch_train_elbo)
         # Reconstruct the image after training
-    recs = []
-    mus = []
-    log_vars = []
-    with torch.no_grad():
-        model.eval()
-        for test_data in test_loader:
-            test_data = test_data.to(device)
-            test_data -= mean[None, ...]
-            rec, penalty = model(test_data)
-            mu, log_var = model.encoder(test_data)
-            mus.append(mu.clone().detach().cpu().numpy())
-            log_vars.append(log_var.clone().detach().cpu().numpy())
-            if reparam:
-                latent = reparameterize(mu, log_var)
-            else:
-                latent = mu
-            rec = model.decoder(latent)
-            recs.append(rec)
 
-    print(f"Average std of latent mu: {np.vstack(mus).std(axis=0).mean()}")
-
-    rec = torch.cat(recs, dim=0)
-    # mean = mean.to('cpu')
-    rec += mean[None, ...]
-    rec = rec.masked_fill_(mask[None, None, ...] ^ 1, 0.)
-    rec = rec.cpu().numpy()
-    list_rec.append(rec)
     state_dict = model.state_dict()
-    torch.save((state_dict, mean), str(output_folder / name))
+    torch.save(state_dict, str(output_folder / name))
